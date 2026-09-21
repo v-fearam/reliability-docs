@@ -6,7 +6,7 @@ author: glynnniall
 ms.topic: reliability-article
 ms.custom: subject-reliability
 ms.service: azure-container-registry
-ms.date: 08/22/2025
+ms.date: 09/22/2026
 #Customer intent: As an engineer responsible for business continuity, I want to understand the details of how Azure Container Registry works from a reliability perspective and plan disaster recovery strategies in alignment with the exact processes that Azure services follow during different kinds of situations.
 ---
 
@@ -162,7 +162,7 @@ Container Registry exposes more than one endpoint, and the endpoint your clients
 
 - **Global endpoint** (`myregistry.azurecr.io`): Azure routes each request to the geo-replica with the best network performance profile for the client. Failover between geo-replicas is automatic and requires no client changes.
 
-- **Regional endpoints** (`myregistry.<region>.geo.azurecr.io`, currently in private preview): Each geo-replica gets a dedicated URL that targets that replica directly, bypassing Azure-managed routing. Regional endpoints give you predictable routing and push/pull consistency, but automatic failover doesn't apply to them. If the target region degrades, you're responsible for switching your clients to a different regional endpoint.
+- **Regional endpoints** (`myregistry.<region>.geo.azurecr.io`, currently in preview): Each geo-replica gets a dedicated URL that targets that replica directly, bypassing Azure-managed routing. Regional endpoints give you predictable routing and push/pull consistency, but automatic failover doesn't apply to them. If the target region degrades, you're responsible for switching your clients to a different regional endpoint.
 
 - **Dedicated data endpoints** (`myregistry.<region>.data.azurecr.io`): When you pull an image, the registry endpoint issues an HTTP 307 redirect to a data endpoint for the layer downloads. Registries that don't use dedicated data endpoints or private endpoints are redirected to `*.blob.core.windows.net` instead. Dedicated data endpoints are automatically enabled when the registry has at least one private endpoint.
 
@@ -197,7 +197,7 @@ Geo-replication can be configured during registry creation or added to existing 
 
 - **Create a geo-replicated registry.** Configure geo-replication after registry creation by specifying extra regions.
 
-- **Enable geo-replication on an existing registry.** To enable geo-replication capabilities, upgrade existing Basic or Standard tier registries to the Premium tier. You can change the replication regions at any time. For more information, see [Configure geo-replication](/azure/container-registry/container-registry-geo-replication#configure-geo-replication).
+- **Enable geo-replication on an existing registry.** To enable geo-replication capabilities, upgrade existing Basic or Standard tier registries to the Premium tier. You can change the replication regions at any time. For more information, see [Configure geo-replication](/azure/container-registry/container-registry-geo-replication).
 
 - **Disable geo-replication.** Remove individual regional replicas through the Azure portal or command-line tools. The home region registry can't be removed.
 
@@ -248,7 +248,7 @@ When a region recovers, data plane operations automatically resume for that regi
 
 ### Test for region failures
 
-You can't simulate the failure of one of the regions associated with your registry, but you can test your application's ability to fail over between regions. You can simulate regional failover by temporarily disabling geo-replicas, which removes them from Traffic Manager routing. Then you can verify that container operations successfully fail over to alternative regions without actually experiencing a regional outage. For more information, see [Temporarily disable routing to replication](/azure/container-registry/container-registry-geo-replication#temporarily-exclude-a-geo-replica-from-global-endpoint-routing).
+You can't simulate the failure of one of the regions associated with your registry, but you can test your application's ability to fail over between regions. You can simulate regional failover by temporarily disabling geo-replicas, which removes them from Traffic Manager routing. Then you can verify that container operations successfully fail over to alternative regions without actually experiencing a regional outage. For more information, see [Temporarily exclude a geo replica](/azure/container-registry/container-registry-geo-replication#temporarily-exclude-a-geo-replica-from-global-endpoint-routing).
 
 When you re-enable the replica, Traffic Manager resumes routing traffic to the re-enabled replica. Also, metadata and images are synchronized with eventual consistency to the re-enabled replica to ensure data consistency across all regions.
 
