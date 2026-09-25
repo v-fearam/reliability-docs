@@ -146,7 +146,7 @@ Azure Storage supports three types of failover for different scenarios.
 
 - **Microsoft-managed failover:** In exceptional circumstances, Microsoft might initiate failover for all geo-redundant storage (GRS) accounts in a region. However, Microsoft-managed failover is a last resort and is expected to only be performed after an extended period of outage. You shouldn't rely on Microsoft-managed failover.
 
-GRS accounts can use any of these failover types. You don't need to preconfigure a storage account to use any of the failover types ahead of time.
+GRS accounts can use any of these failover types, and you don't need to preconfigure a storage account to use them ahead of time. However, some features block a planned failover. You can't initiate a planned failover on an account that has change feed, object replication, or point-in-time restore enabled, or when the account's last sync time is more than 30 minutes behind. For more information, see [Azure Storage failover FAQ](/azure/storage/common/storage-failover-faq).
 
 #### Requirements
 
@@ -162,6 +162,8 @@ When you implement multiregion Blob Storage, consider the following key factors:
 
 - **Asynchronous replication latency:** Data replication to the secondary region is asynchronous, which means that there's a lag between when data is written to the primary region and when it becomes available in the secondary region. This lag can result in potential data loss if a primary region failure occurs before recent data is replicated. The data loss is measured by the recovery point objective (RPO). You can expect the replication lag to be less than 15 minutes, but this time is an estimate and not guaranteed.
 
+   If you need an RPO target for block blob data, enable [geo priority replication](/azure/storage/common/storage-redundancy-priority-replication). Geo priority replication provides an SLA that the Last Sync Time for your account's block blob data stays within 15 minutes for 99% of the billing month, and it incurs an extra per-GB charge. Eligibility requirements apply. For example, the SLA doesn't apply to accounts that use append blobs or page blobs, including accounts that use features that write append blobs, such as change feed.
+
    You can check the [Last Sync Time property](/azure/storage/common/last-sync-time-get) to understand how much data might be lost if your storage account has an unplanned failover.
 
 - **Secondary region access:** With geo-redundant storage (GRS) and geo-zone-redundant storage (GZRS) configurations, the secondary region isn't accessible for reads until a failover occurs.
@@ -169,6 +171,8 @@ When you implement multiregion Blob Storage, consider the following key factors:
   read-access geo-redundant storage (RA-GRS) and read-access geo-zone-redundant storage (RA-GZRS) configurations provide read access to the secondary region during normal operations, but because of the asynchronous replication latency, they might return slightly outdated data.
 
 - **Feature limitations:** Some Azure Storage features aren't supported or have limitations when you use geo-redundant storage (GRS) or customer-managed failover. Review [feature compatibility](/azure/storage/common/storage-disaster-recovery-guidance#unsupported-features-and-services) before you implement geo-redundancy.
+
+- **Management operations:** The Azure Storage resource provider doesn't fail over. After a failover, clients can read and write data in the new primary region, but management operations on the storage account still take place in the original primary region. If that region is unavailable, you can't perform management operations, such as changing the account's redundancy or network rules. The account's `Location` property also continues to return the original primary region after a failover completes.
 
 #### Cost
 
@@ -225,13 +229,13 @@ This section describes what to expect when a storage account is configured for g
 
     - **Active requests:** During the failover process, both the primary and secondary storage account endpoints become temporarily unavailable for both reads and writes. Any active requests might be dropped, and client applications need to retry after the failover completes.
 
-    - **Expected data loss:** Data loss is common during an unplanned failover because of the asynchronous replication lag, which means that recent writes might not be replicated. You can check the [Last Sync Time property](/azure/storage/common/last-sync-time-get) to understand how much data might be lost during an unplanned failover. Expected data loss is often referred to as the recovery point objective (RPO). You can typically expect the RPO to be less than 15 minutes, but that time isn't guaranteed.
+    - **Expected data loss:** Data loss is common during an unplanned failover because of the asynchronous replication lag, which means that recent writes might not be replicated. You can check the [Last Sync Time property](/azure/storage/common/last-sync-time-get) to understand how much data might be lost during an unplanned failover. Expected data loss is often referred to as the recovery point objective (RPO). You can typically expect the RPO to be less than 15 minutes, but that time isn't guaranteed. If you use [geo priority replication](/azure/storage/common/storage-redundancy-priority-replication), an SLA-backed RPO applies to block blob data.
 
     - **Expected downtime:** The amount of expected downtime is often referred to as the recovery time objective (RTO). Customer-managed failover typically completes within 60 minutes, depending on the account size and complexity.
 
     - **Traffic rerouting:** As the failover completes, Azure automatically updates the storage account endpoints so that applications don't need to be reconfigured. If your application keeps Domain Name System (DNS) entries cached, it might be necessary to clear the cache to ensure that the application sends traffic to the new primary region.
 
-    - **Post-failover configuration:** After an unplanned failover completes, your storage account in the destination region uses the locally redundant storage (LRS) tier. If you need to geo-replicate it again, you need to re-enable geo-redundant storage (GRS) and wait for the data to be replicated to the new secondary region.
+    - **Post-failover configuration:** After an unplanned failover completes, your storage account in the destination region uses the locally redundant storage (LRS) tier. If you need to geo-replicate it again, you need to re-enable geo-redundant storage (GRS) and wait for the data to be replicated to the new secondary region. There's no SLA for how long that conversion takes. If the account contains archived blobs, you must rehydrate them to an online tier first. You also can't add zone redundancy until you fail back to the original primary region, so a geo-zone-redundant storage (GZRS) account isn't zone-redundant in the meantime. An unplanned failover also disables [geo priority replication](/azure/storage/common/storage-redundancy-priority-replication). If you use it, re-enable it after you restore geo-redundancy.
 
     For more information about how to initiate customer-managed failover, see [How customer-managed (unplanned) failover works](/azure/storage/common/storage-failover-customer-managed-unplanned) and [Initiate a storage account failover](/azure/storage/common/storage-initiate-account-failover).
 
@@ -243,7 +247,7 @@ This section describes what to expect when a storage account is configured for g
 
   - **Active requests:** During the failover process, both the primary and secondary storage account endpoints become temporarily unavailable for both reads and writes. Any active requests might be dropped, and client applications need to retry after the failover completes.
 
-  - **Expected data loss:** No data loss is expected because the failover process completes only after all data is synchronized, which results in an RPO of zero.
+  - **Expected data loss:** No data loss is expected because the failover process completes only after all data is synchronized, which results in an RPO of zero. This expectation applies as long as both the primary and secondary regions remain available throughout the failover process.
 
   - **Expected downtime:** Failover typically completes within 60 minutes, which means that the expected RTO is 60 minutes, depending on account size and complexity. During the failover process, both the primary and secondary storage account endpoints become temporarily unavailable for both reads and writes.
 
@@ -298,11 +302,15 @@ You can deploy Azure Storage across multiple regions by using separate storage a
 
 You can configure object replication to replicate all blobs within a container or specific subsets based on blob prefixes and tags. The replication is asynchronous and occurs in the background. You can configure multiple replication policies and even chain replication across multiple storage accounts to create sophisticated multiregion topologies.
 
+By default, object replication has no guaranteed completion time. If you need a replication time target, you can enable *priority replication* on one replication policy for each source account. When the source and destination accounts are on the same continent, priority replication provides an SLA-backed target of replicating 99% of objects within 15 minutes. Eligibility requirements apply, such as limits on object size and on the account's transfer rate. Priority replication incurs an extra per-GB charge. For more information, see [Priority replication for object replication](/azure/storage/blobs/object-replication-priority-replication).
+
+To monitor replication progress, enable replication metrics on the source account. The metrics report the number of operations and the number of bytes that are pending replication, grouped by how long they've been pending. Replication metrics are enabled automatically when you use priority replication.
+
 Object replication isn't compatible with all storage accounts. For example, it doesn't work with storage accounts that use hierarchical namespaces (also known as *Azure Data Lake Storage Gen2 accounts*).
 
 For more information, see [Object replication for block blobs](/azure/storage/blobs/object-replication-overview) and [Configure object replication](/azure/storage/blobs/object-replication-configure).
 
-## Backup and recovery
+## Backup and restore
 
 Blob Storage provides multiple data protection mechanisms that complement redundancy for comprehensive backup strategies. The service's built-in redundancy protects against infrastructure failures, and extra backup capabilities protect against accidental deletion, corruption, and malicious activities.
 
